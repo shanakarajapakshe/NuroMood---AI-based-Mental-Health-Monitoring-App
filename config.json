@@ -1,0 +1,23 @@
+{
+  "data": {
+    "train_csv": "data/train.csv",
+    "val_csv": "data/val.csv",
+    "text_col": "text",
+    "labels_col": "label",
+    "label_names": ["anger","fear","joy","love","sadness","surprise"],
+    "use_multihot_columns": false
+  },
+  "model": {
+    "pretrained_name": "distilbert-base-uncased",
+    "max_length": 160
+  },
+  "train": {
+    "num_epochs": 3,
+    "batch_size": 16,
+    "lr": 5e-5,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "seed": 42
+  },
+  "output_dir": "artifacts"
+}

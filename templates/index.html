@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nuromood Journal Classifier</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; }
+    textarea { width: 100%; height: 120px; padding: 10px; font-size: 16px; }
+    button { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+    .prediction { margin-top: 20px; font-weight: bold; font-size: 18px; }
+    .score { margin-top: 5px; }
+    .bar { height: 20px; background-color: #4CAF50; text-align: right; color: white; padding-right: 5px; }
+    .bar-container { width: 100%; background-color: #ddd; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+  <h2>Nuromood Journal Classifier</h2>
+  <p>Type your daily journal entry and click "Analyze".</p>
+  <textarea id="journal"></textarea>
+  <br>
+  <button onclick="analyze()">Analyze</button>
+
+  <div class="prediction" id="prediction"></div>
+  <div id="scores"></div>
+
+  <script>
+    async function analyze() {
+      const text = document.getElementById('journal').value;
+      const predictionDiv = document.getElementById('prediction');
+      const scoresDiv = document.getElementById('scores');
+      predictionDiv.innerHTML = "Analyzing...";
+      scoresDiv.innerHTML = "";
+
+      try {
+        const response = await fetch('http://192.168.1.144:5000/analyze_text', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ text })
+        });
+
+        if (!response.ok) {
+          predictionDiv.innerHTML = `Error: ${response.status}`;
+          return;
+        }
+
+        const data = await response.json();
+        predictionDiv.innerHTML = `Prediction: ${data.prediction}`;
+
+        for (const [label, score] of Object.entries(data.scores)) {
+          const container = document.createElement('div');
+          container.className = 'bar-container';
+          const bar = document.createElement('div');
+          bar.className = 'bar';
+          bar.style.width = `${(score*100).toFixed(1)}%`;
+          bar.textContent = `${(score*100).toFixed(1)}% ${label}`;
+          container.appendChild(bar);
+          scoresDiv.appendChild(container);
+        }
+      } catch (err) {
+        predictionDiv.innerHTML = `Error: ${err}`;
+      }
+    }
+  </script>
+</body>
+</html>

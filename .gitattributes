@@ -1,1 +1,9 @@
 artifacts/model.safetensors filter=lfs diff=lfs merge=lfs -text
+# Ignore Flutter build folders for language stats
+mobile_web/build/** linguist-vendored
+mobile_web/.dart_tool/** linguist-vendored
+mobile_web/.idea/** linguist-vendored
+mobile_web/.packages linguist-vendored
+
+# Ignore artifacts folder except for LFS-tracked files
+artifacts/** linguist-vendored

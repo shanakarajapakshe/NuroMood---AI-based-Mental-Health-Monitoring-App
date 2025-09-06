@@ -7,8 +7,22 @@ mobile_web/.dart_tool/** linguist-vendored
 mobile_web/.idea/** linguist-vendored
 mobile_web/.packages linguist-vendored
 
-# Ignore generated iOS/macOS/Android/Linux/Windows folders
+# Ignore web folder (generated HTML/JS/CSS)
+mobile_web/web/** linguist-vendored
+
+# Ignore iOS/macOS build files
 mobile_web/ios/Flutter/** linguist-vendored
+mobile_web/ios/Pods/** linguist-vendored
+mobile_web/ios/Runner.xcworkspace/** linguist-vendored
+
+# Ignore Android build files
 mobile_web/android/**/build/** linguist-vendored
+mobile_web/android/.gradle/** linguist-vendored
+
+# Ignore Linux/Windows runner folders
 mobile_web/linux/flutter/** linguist-vendored
 mobile_web/windows/flutter/** linguist-vendored
+
+# Ignore Python cache
+__pycache__/** linguist-vendored
+*.pyc linguist-vendored

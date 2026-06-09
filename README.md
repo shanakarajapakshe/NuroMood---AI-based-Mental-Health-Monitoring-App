@@ -6,6 +6,10 @@ Nuromood is a cross-platform emotion journaling and mental wellness application 
 
 The system combines a Flutter client, a Python Flask REST API, SQLite persistence, and a Hugging Face Transformers-based text classification model.
 
+[Open the interactive web demo](https://shanakarajapakshe.github.io/NuroMood---AI-based-Mental-Health-Monitoring-App/)
+
+The GitHub Pages demo runs entirely in the browser with sample data and local storage. It does not send journal text to the Flask API or the trained model.
+
 > **Medical disclaimer:** Nuromood is a supportive self-reflection and wellness tool. It is not a medical device, does not diagnose mental health conditions, and must not replace qualified professional care or emergency services.
 
 ## Table of Contents

@@ -7,6 +7,7 @@ import 'screens/advanced_dashboard.dart';
 import 'services/gamification_service.dart';
 import 'services/notification_service.dart';
 import 'theme/nuromood_ui.dart';
+import 'app_config.dart';
 
 class JournalHomePage extends StatefulWidget {
   final int userId;
@@ -136,6 +137,13 @@ class _JournalHomePageState extends State<JournalHomePage> {
                     avatar: const Icon(Icons.local_fire_department, size: 18),
                     label: Text("${_currentStreak()} Day Streak"),
                   ),
+                  if (AppConfig.isDemo) ...[
+                    const SizedBox(height: 8),
+                    const Chip(
+                      avatar: Icon(Icons.public, size: 18),
+                      label: Text("Interactive Demo"),
+                    ),
+                  ],
                 ],
               ),
             ),

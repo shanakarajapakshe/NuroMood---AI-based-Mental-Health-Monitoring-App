@@ -10,6 +10,7 @@ import 'services/entitlement_service.dart';
 import 'widgets/coping_exercise_sheet.dart';
 import 'widgets/crisis_support_overlay.dart';
 import 'theme/nuromood_ui.dart';
+import 'app_config.dart';
 
 class AddJournalPage extends StatefulWidget {
   final int userId;
@@ -251,6 +252,25 @@ class _AddJournalPageState extends State<AddJournalPage> {
   }
 
   Future<String> getMoodFromText(String text) async {
+    if (AppConfig.isDemo) {
+      final value = text.toLowerCase();
+      if (value.contains(RegExp(r'\b(happy|proud|excited|great|joy)\b'))) {
+        return 'joy';
+      }
+      if (value.contains(RegExp(r'\b(sad|hurt|lonely|disappointed)\b'))) {
+        return 'sadness';
+      }
+      if (value.contains(RegExp(r'\b(angry|mad|frustrated)\b'))) {
+        return 'anger';
+      }
+      if (value.contains(RegExp(r'\b(anxious|worried|stress|afraid)\b'))) {
+        return 'anxiety';
+      }
+      if (value.contains(RegExp(r'\b(love|grateful|connected)\b'))) {
+        return 'love';
+      }
+      return 'neutral';
+    }
     try {
       final response = await http
           .post(

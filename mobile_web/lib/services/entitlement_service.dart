@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../app_config.dart';
 
 class UserEntitlement {
   final String tier;
@@ -49,10 +50,13 @@ class EntitlementService {
   final String apiBase = 'http://127.0.0.1:5000';
 
   Future<UserEntitlement> getEntitlement(int userId) async {
+    if (AppConfig.isDemo) return UserEntitlement.free;
     try {
-      final response = await _client.get(Uri.parse('$apiBase/entitlements/$userId'));
+      final response =
+          await _client.get(Uri.parse('$apiBase/entitlements/$userId'));
       if (response.statusCode == 200) {
-        return UserEntitlement.fromJson(Map<String, dynamic>.from(jsonDecode(response.body)));
+        return UserEntitlement.fromJson(
+            Map<String, dynamic>.from(jsonDecode(response.body)));
       }
     } catch (e) {
       debugPrint('Entitlement fetch failed: $e');

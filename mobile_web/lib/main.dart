@@ -7,17 +7,21 @@ import 'register_page.dart';
 import 'screens/biometric_gatekeeper.dart';
 import 'services/notification_service.dart';
 import 'theme/nuromood_ui.dart';
+import 'app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
   await DBHelper().init();
 
-  final int? currentUser = await DBHelper().getCurrentUser();
+  final int? currentUser = AppConfig.isDemo
+      ? AppConfig.demoUserId
+      : await DBHelper().getCurrentUser();
 
   // Check first launch
   final prefs = await SharedPreferences.getInstance();
-  final bool firstLaunch = prefs.getBool('first_launch') ?? true;
+  final bool firstLaunch =
+      AppConfig.isDemo ? false : (prefs.getBool('first_launch') ?? true);
   if (firstLaunch) {
     await prefs.setBool('first_launch', false);
   }
@@ -283,27 +287,33 @@ class _MyAppState extends State<MyApp> {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      home: widget.firstLaunch
-          ? RegisterPage(
+      home: AppConfig.isDemo
+          ? JournalHomePage(
+              userId: AppConfig.demoUserId,
               toggleTheme: toggleTheme,
               isDarkMode: isDarkMode,
             )
-          : (widget.currentUser != null
-              ? BiometricGatekeeper(
-                  fallback: LoginPage(
-                    toggleTheme: toggleTheme,
-                    isDarkMode: isDarkMode,
-                  ),
-                  child: JournalHomePage(
-                    userId: widget.currentUser!,
-                    toggleTheme: toggleTheme,
-                    isDarkMode: isDarkMode,
-                  ),
-                )
-              : LoginPage(
+          : widget.firstLaunch
+              ? RegisterPage(
                   toggleTheme: toggleTheme,
                   isDarkMode: isDarkMode,
-                )),
+                )
+              : (widget.currentUser != null
+                  ? BiometricGatekeeper(
+                      fallback: LoginPage(
+                        toggleTheme: toggleTheme,
+                        isDarkMode: isDarkMode,
+                      ),
+                      child: JournalHomePage(
+                        userId: widget.currentUser!,
+                        toggleTheme: toggleTheme,
+                        isDarkMode: isDarkMode,
+                      ),
+                    )
+                  : LoginPage(
+                      toggleTheme: toggleTheme,
+                      isDarkMode: isDarkMode,
+                    )),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/journal_analysis.dart';
+import '../app_config.dart';
 
 class JournalApiService {
   JournalApiService({http.Client? client}) : _client = client ?? http.Client();
@@ -18,6 +19,7 @@ class JournalApiService {
     required String text,
     String? imagePath,
   }) async {
+    if (AppConfig.isDemo) return null;
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity.contains(ConnectivityResult.none)) {
       await queueOfflineJournal({
@@ -51,7 +53,8 @@ class JournalApiService {
         'crisis_signal': json['crisis_signal'],
       });
     }
-    debugPrint('Analyze journal failed: ${response.statusCode} ${response.body}');
+    debugPrint(
+        'Analyze journal failed: ${response.statusCode} ${response.body}');
     return null;
   }
 
@@ -82,7 +85,10 @@ class JournalApiService {
 
   String _anonymizeForModel(String text) {
     return text
-        .replaceAll(RegExp(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', caseSensitive: false), '[email]')
+        .replaceAll(
+            RegExp(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}',
+                caseSensitive: false),
+            '[email]')
         .replaceAll(RegExp(r'\+?\d[\d\s-]{7,}\d'), '[phone]');
   }
 }

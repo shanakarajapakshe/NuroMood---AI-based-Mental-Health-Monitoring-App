@@ -1,12 +1,12 @@
 {
-    "name": "nuromood_app",
-    "short_name": "nuromood_app",
+    "name": "Nuromood Interactive Demo",
+    "short_name": "Nuromood",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#07131F",
+    "theme_color": "#177E89",
+    "description": "AI-assisted emotion journal and mental wellness demo.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

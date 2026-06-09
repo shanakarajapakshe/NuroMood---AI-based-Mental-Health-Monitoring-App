@@ -444,7 +444,9 @@ class _MoodLineChart extends StatelessWidget {
                 interval: days == 7 ? 1 : 5,
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
-                  if (index < 0 || index >= dates.length) return const SizedBox.shrink();
+                  if (index < 0 || index >= dates.length) {
+                    return const SizedBox.shrink();
+                  }
                   return Text('${dates[index].day}', style: const TextStyle(fontSize: 10));
                 },
               ),

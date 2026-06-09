@@ -6,8 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'services/security_service.dart';
-
-
+import 'app_config.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -15,9 +14,7 @@ class DBHelper {
   DBHelper._internal();
 
   late Database _db;
-final String apiBase = "http://127.0.0.1:5000";
-
-
+  final String apiBase = "http://127.0.0.1:5000";
 
   int? _currentUserId;
 
@@ -31,6 +28,9 @@ final String apiBase = "http://127.0.0.1:5000";
     _journalBox = await Hive.openBox('journals');
     _sessionBox = await Hive.openBox('session');
     _syncQueueBox = await Hive.openBox('journal_sync_queue');
+    if (AppConfig.isDemo) {
+      await _seedDemoJournals();
+    }
 
     if (!kIsWeb) {
       if (defaultTargetPlatform == TargetPlatform.windows ||
@@ -70,18 +70,22 @@ final String apiBase = "http://127.0.0.1:5000";
         },
         onOpen: (db) async {
           await _ensureLocalColumn(db, 'journals', 'deleted_at', 'TEXT');
-          await _ensureLocalColumn(db, 'journals', 'sync_status', "TEXT DEFAULT 'synced'");
+          await _ensureLocalColumn(
+              db, 'journals', 'sync_status', "TEXT DEFAULT 'synced'");
         },
       );
     }
 
     await purgeExpiredTrash();
-    await syncPendingJournals();
+    if (!AppConfig.isDemo) {
+      await syncPendingJournals();
+    }
     // Load current user session
     await _loadCurrentUser();
   }
 
-  Future<void> _ensureLocalColumn(Database db, String table, String column, String definition) async {
+  Future<void> _ensureLocalColumn(
+      Database db, String table, String column, String definition) async {
     final columns = await db.rawQuery('PRAGMA table_info($table)');
     final exists = columns.any((row) => row['name'] == column);
     if (!exists) {
@@ -92,10 +96,16 @@ final String apiBase = "http://127.0.0.1:5000";
   // ------------------- Session -------------------
 
   Future<void> _loadCurrentUser() async {
+    if (AppConfig.isDemo) {
+      _currentUserId = AppConfig.demoUserId;
+      return;
+    }
+
     // Check Hive first
     final hiveUser = _sessionBox?.get('user_id');
     if (hiveUser != null) {
-      _currentUserId = hiveUser is int ? hiveUser : int.tryParse(hiveUser.toString());
+      _currentUserId =
+          hiveUser is int ? hiveUser : int.tryParse(hiveUser.toString());
       return;
     }
 
@@ -110,7 +120,8 @@ final String apiBase = "http://127.0.0.1:5000";
       if (result.isNotEmpty) {
         final rawUserId = result.first['id'];
         if (rawUserId != null) {
-          _currentUserId = rawUserId is int ? rawUserId : int.tryParse(rawUserId.toString());
+          _currentUserId =
+              rawUserId is int ? rawUserId : int.tryParse(rawUserId.toString());
         }
       }
     }
@@ -130,6 +141,7 @@ final String apiBase = "http://127.0.0.1:5000";
   // ------------------- User Auth -------------------
 
   Future<bool> registerUser(String email, String password) async {
+    if (AppConfig.isDemo) return true;
     try {
       final response = await http.post(
         Uri.parse('$apiBase/register'),
@@ -144,6 +156,12 @@ final String apiBase = "http://127.0.0.1:5000";
   }
 
   Future<int?> loginUser(String email, String password) async {
+    if (AppConfig.isDemo) {
+      _currentUserId = AppConfig.demoUserId;
+      await _sessionBox?.put('user_id', AppConfig.demoUserId);
+      return AppConfig.demoUserId;
+    }
+
     try {
       final response = await http.post(
         Uri.parse('$apiBase/login'),
@@ -182,17 +200,25 @@ final String apiBase = "http://127.0.0.1:5000";
 
   // ------------------- Journals -------------------
 
-  Future<List<Map<String, dynamic>>> getJournals(int userId, {bool refresh = false}) async {
+  Future<List<Map<String, dynamic>>> getJournals(int userId,
+      {bool refresh = false}) async {
     List<Map<String, dynamic>> journals = [];
-    await syncPendingJournals();
+    if (!AppConfig.isDemo) {
+      await syncPendingJournals();
+    }
 
     if (!refresh) {
       if (kIsWeb && _journalBox != null && _journalBox!.isNotEmpty) {
         journals = _journalBox!.values
-            .where((e) => e is Map && e['user_id'] == userId && e['is_deleted'] == 0)
+            .where((e) =>
+                e is Map && e['user_id'] == userId && e['is_deleted'] == 0)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
-        if (journals.isNotEmpty) return journals;
+        if (journals.isNotEmpty || AppConfig.isDemo) {
+          journals.sort(
+              (a, b) => b['date'].toString().compareTo(a['date'].toString()));
+          return journals;
+        }
       } else if (!kIsWeb) {
         journals = await _db.query(
           'journals',
@@ -203,6 +229,8 @@ final String apiBase = "http://127.0.0.1:5000";
         if (journals.isNotEmpty) return journals;
       }
     }
+
+    if (AppConfig.isDemo) return journals;
 
     // Fetch from API
     try {
@@ -218,7 +246,8 @@ final String apiBase = "http://127.0.0.1:5000";
           }
         } else {
           for (var entry in journals) {
-            await _db.insert('journals', entry, conflictAlgorithm: ConflictAlgorithm.replace);
+            await _db.insert('journals', entry,
+                conflictAlgorithm: ConflictAlgorithm.replace);
           }
         }
       }
@@ -229,7 +258,8 @@ final String apiBase = "http://127.0.0.1:5000";
     return journals;
   }
 
-  Future<void> insertJournal(int userId, String text, String mood, {String? image}) async {
+  Future<void> insertJournal(int userId, String text, String mood,
+      {String? image}) async {
     final id = DateTime.now().millisecondsSinceEpoch;
     final entry = {
       'id': id,
@@ -247,6 +277,12 @@ final String apiBase = "http://127.0.0.1:5000";
       await _journalBox?.put(id.toString(), entry);
     } else {
       await _db.insert('journals', entry);
+    }
+
+    if (AppConfig.isDemo) {
+      entry['sync_status'] = 'local-demo';
+      await _saveLocalEntry(id.toString(), entry);
+      return;
     }
 
     try {
@@ -276,7 +312,9 @@ final String apiBase = "http://127.0.0.1:5000";
   }
 
   Future<void> moveToTrash(int userId, int entryId) async {
-    await _updateJournalStatus(userId, entryId, 1, deletedAt: DateTime.now().toIso8601String());
+    await _updateJournalStatus(userId, entryId, 1,
+        deletedAt: DateTime.now().toIso8601String());
+    if (AppConfig.isDemo) return;
     try {
       await http.delete(Uri.parse('$apiBase/journals/$userId/$entryId'));
     } catch (e) {
@@ -287,63 +325,74 @@ final String apiBase = "http://127.0.0.1:5000";
 
   Future<void> restoreFromTrash(int userId, int entryId) async {
     await _updateJournalStatus(userId, entryId, 0, deletedAt: null);
+    if (AppConfig.isDemo) return;
     try {
       await http.post(Uri.parse('$apiBase/journals/$userId/$entryId/restore'));
     } catch (e) {
       debugPrint("Restore API error: $e");
-      await _queueSync({'op': 'restore', 'user_id': userId, 'entry_id': entryId});
+      await _queueSync(
+          {'op': 'restore', 'user_id': userId, 'entry_id': entryId});
     }
   }
 
-  Future<List<Map<String, dynamic>>> getJournalsByDate(int userId, String date, {bool refresh = false}) async {
-  List<Map<String, dynamic>> journals = [];
+  Future<List<Map<String, dynamic>>> getJournalsByDate(int userId, String date,
+      {bool refresh = false}) async {
+    List<Map<String, dynamic>> journals = [];
 
-  // Check local cache first
-  if (!refresh) {
-    if (kIsWeb && _journalBox != null) {
-      journals = _journalBox!.values
-          .where((e) => e is Map && e['user_id'] == userId && e['is_deleted'] == 0 && (e['date'] as String).startsWith(date))
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
-      if (journals.isNotEmpty) return journals;
-    } else if (!kIsWeb) {
-      journals = await _db.query(
-        'journals',
-        where: 'user_id = ? AND is_deleted = 0 AND date LIKE ?',
-        whereArgs: [userId, '$date%'],
-        orderBy: 'date DESC',
-      );
-      if (journals.isNotEmpty) return journals;
-    }
-  }
-
-  // Fetch from API
-  try {
-    final response = await http.get(Uri.parse('$apiBase/journals/$userId/date/$date'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as List;
-      journals = data.map((e) => Map<String, dynamic>.from(e)).toList();
-
-      // Save locally
-      if (kIsWeb) {
-        for (var entry in journals) {
-          await _journalBox?.put(entry['id'].toString(), entry);
-        }
-      } else {
-        for (var entry in journals) {
-          await _db.insert('journals', entry, conflictAlgorithm: ConflictAlgorithm.replace);
-        }
+    // Check local cache first
+    if (!refresh) {
+      if (kIsWeb && _journalBox != null) {
+        journals = _journalBox!.values
+            .where((e) =>
+                e is Map &&
+                e['user_id'] == userId &&
+                e['is_deleted'] == 0 &&
+                (e['date'] as String).startsWith(date))
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        if (journals.isNotEmpty) return journals;
+      } else if (!kIsWeb) {
+        journals = await _db.query(
+          'journals',
+          where: 'user_id = ? AND is_deleted = 0 AND date LIKE ?',
+          whereArgs: [userId, '$date%'],
+          orderBy: 'date DESC',
+        );
+        if (journals.isNotEmpty) return journals;
       }
     }
-  } catch (e) {
-    debugPrint("Fetch journals by date API error: $e");
+
+    if (AppConfig.isDemo) return journals;
+
+    // Fetch from API
+    try {
+      final response =
+          await http.get(Uri.parse('$apiBase/journals/$userId/date/$date'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        journals = data.map((e) => Map<String, dynamic>.from(e)).toList();
+
+        // Save locally
+        if (kIsWeb) {
+          for (var entry in journals) {
+            await _journalBox?.put(entry['id'].toString(), entry);
+          }
+        } else {
+          for (var entry in journals) {
+            await _db.insert('journals', entry,
+                conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Fetch journals by date API error: $e");
+    }
+
+    return journals;
   }
 
-  return journals;
-}
-
-
-  Future<void> _updateJournalStatus(int userId, int entryId, int isDeleted, {String? deletedAt}) async {
+  Future<void> _updateJournalStatus(int userId, int entryId, int isDeleted,
+      {String? deletedAt}) async {
     if (kIsWeb) {
       final entry = _journalBox?.get(entryId.toString());
       if (entry != null) {
@@ -356,98 +405,115 @@ final String apiBase = "http://127.0.0.1:5000";
     } else {
       await _db.update(
         'journals',
-        {'is_deleted': isDeleted, 'deleted_at': deletedAt, 'sync_status': 'pending'},
+        {
+          'is_deleted': isDeleted,
+          'deleted_at': deletedAt,
+          'sync_status': 'pending'
+        },
         where: 'user_id = ? AND id = ?',
         whereArgs: [userId, entryId],
       );
     }
   }
+
 // ------------------- Update Journal -------------------
-Future<void> updateJournal(int userId, int entryId, String text, String mood, {String? image}) async {
-  final updatedEntry = {
-    'text': text,
-    'mood': mood,
-    'image_path': image ?? '',
-    'date': DateTime.now().toIso8601String(),
-    'sync_status': 'pending',
-  };
-
-  // Update locally
-  if (kIsWeb) {
-    final entry = _journalBox?.get(entryId.toString());
-    if (entry != null) {
-      final updated = Map<String, dynamic>.from(entry)..addAll(updatedEntry);
-      await _journalBox?.put(entryId.toString(), updated);
-    }
-  } else {
-    await _db.update(
-      'journals',
-      updatedEntry,
-      where: 'user_id = ? AND id = ?',
-      whereArgs: [userId, entryId],
-    );
-  }
-
-  // Send update to API
-  try {
-   final encrypted = await SecurityService.instance.encryptJournalText(text);
-   await http.put(
-  Uri.parse('$apiBase/journals/$userId/$entryId'),
-  headers: {"Content-Type": "application/json"},
-  body: jsonEncode({
-    'encrypted_journal': encrypted.toJson(),
-    'mood': mood,
-    'image_path': image
-  }),
-);
-
-  } catch (e) {
-    debugPrint("Update journal API error: $e");
-    await _queueSync({
-      'op': 'update',
-      'user_id': userId,
-      'entry_id': entryId,
+  Future<void> updateJournal(int userId, int entryId, String text, String mood,
+      {String? image}) async {
+    final updatedEntry = {
       'text': text,
       'mood': mood,
-      'image_path': image,
-    });
-  }
-}
+      'image_path': image ?? '',
+      'date': DateTime.now().toIso8601String(),
+      'sync_status': 'pending',
+    };
 
-Future<void> deleteForever(int userId, int journalId) async {
-  if (!kIsWeb) {
-    await _db.delete(
-      'journals',
-      where: 'id = ? AND user_id = ? AND is_deleted = 1',
-      whereArgs: [journalId, userId],
-    );
-  } else if (_journalBox != null) {
-    // For web (Hive)
-    final keysToDelete = _journalBox!.keys.where((key) {
-      final e = _journalBox!.get(key);
-      return e is Map &&
-          e['user_id'] == userId &&
-          e['id'] == journalId &&
-          e['is_deleted'] == 1;
-    }).toList();
+    // Update locally
+    if (kIsWeb) {
+      final entry = _journalBox?.get(entryId.toString());
+      if (entry != null) {
+        final updated = Map<String, dynamic>.from(entry)..addAll(updatedEntry);
+        await _journalBox?.put(entryId.toString(), updated);
+      }
+    } else {
+      await _db.update(
+        'journals',
+        updatedEntry,
+        where: 'user_id = ? AND id = ?',
+        whereArgs: [userId, entryId],
+      );
+    }
 
-    for (var key in keysToDelete) {
-      await _journalBox!.delete(key);
+    // Send update to API
+    if (AppConfig.isDemo) {
+      final entry = _journalBox?.get(entryId.toString());
+      if (entry != null) {
+        final local = Map<String, dynamic>.from(entry);
+        local['sync_status'] = 'local-demo';
+        await _journalBox?.put(entryId.toString(), local);
+      }
+      return;
+    }
+
+    try {
+      final encrypted = await SecurityService.instance.encryptJournalText(text);
+      await http.put(
+        Uri.parse('$apiBase/journals/$userId/$entryId'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          'encrypted_journal': encrypted.toJson(),
+          'mood': mood,
+          'image_path': image
+        }),
+      );
+    } catch (e) {
+      debugPrint("Update journal API error: $e");
+      await _queueSync({
+        'op': 'update',
+        'user_id': userId,
+        'entry_id': entryId,
+        'text': text,
+        'mood': mood,
+        'image_path': image,
+      });
     }
   }
-  try {
-    await http.delete(Uri.parse('$apiBase/journals/$userId/$journalId/permanent'));
-  } catch (e) {
-    debugPrint("Permanent delete API error: $e");
-  }
-}
 
+  Future<void> deleteForever(int userId, int journalId) async {
+    if (!kIsWeb) {
+      await _db.delete(
+        'journals',
+        where: 'id = ? AND user_id = ? AND is_deleted = 1',
+        whereArgs: [journalId, userId],
+      );
+    } else if (_journalBox != null) {
+      // For web (Hive)
+      final keysToDelete = _journalBox!.keys.where((key) {
+        final e = _journalBox!.get(key);
+        return e is Map &&
+            e['user_id'] == userId &&
+            e['id'] == journalId &&
+            e['is_deleted'] == 1;
+      }).toList();
+
+      for (var key in keysToDelete) {
+        await _journalBox!.delete(key);
+      }
+    }
+    if (AppConfig.isDemo) return;
+    try {
+      await http
+          .delete(Uri.parse('$apiBase/journals/$userId/$journalId/permanent'));
+    } catch (e) {
+      debugPrint("Permanent delete API error: $e");
+    }
+  }
 
   Future<List<Map<String, dynamic>>> getTrash(int userId) async {
     await purgeExpiredTrash();
     if (kIsWeb && _journalBox != null) {
       return _journalBox!.values
-          .where((e) => e is Map && e['user_id'] == userId && e['is_deleted'] == 1)
+          .where(
+              (e) => e is Map && e['user_id'] == userId && e['is_deleted'] == 1)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
     } else if (!kIsWeb) {
@@ -465,7 +531,8 @@ Future<void> deleteForever(int userId, int journalId) async {
     if (kIsWeb) {
       await _journalBox?.put(key, entry);
     } else {
-      await _db.insert('journals', entry, conflictAlgorithm: ConflictAlgorithm.replace);
+      await _db.insert('journals', entry,
+          conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -477,6 +544,7 @@ Future<void> deleteForever(int userId, int journalId) async {
   }
 
   Future<void> syncPendingJournals() async {
+    if (AppConfig.isDemo) return;
     if (_syncQueueBox == null || _syncQueueBox!.isEmpty) return;
     for (final key in _syncQueueBox!.keys.toList()) {
       final item = Map<String, dynamic>.from(_syncQueueBox!.get(key));
@@ -485,7 +553,8 @@ Future<void> deleteForever(int userId, int journalId) async {
         final userId = item['user_id'];
         final entryId = item['entry_id'];
         if (op == 'insert') {
-          final encrypted = await SecurityService.instance.encryptJournalText(item['text']?.toString() ?? '');
+          final encrypted = await SecurityService.instance
+              .encryptJournalText(item['text']?.toString() ?? '');
           final response = await http.post(
             Uri.parse('$apiBase/journals/$userId'),
             headers: {"Content-Type": "application/json"},
@@ -499,9 +568,11 @@ Future<void> deleteForever(int userId, int journalId) async {
         } else if (op == 'trash') {
           await http.delete(Uri.parse('$apiBase/journals/$userId/$entryId'));
         } else if (op == 'restore') {
-          await http.post(Uri.parse('$apiBase/journals/$userId/$entryId/restore'));
+          await http
+              .post(Uri.parse('$apiBase/journals/$userId/$entryId/restore'));
         } else if (op == 'update') {
-          final encrypted = await SecurityService.instance.encryptJournalText(item['text']?.toString() ?? '');
+          final encrypted = await SecurityService.instance
+              .encryptJournalText(item['text']?.toString() ?? '');
           await http.put(
             Uri.parse('$apiBase/journals/$userId/$entryId'),
             headers: {"Content-Type": "application/json"},
@@ -525,7 +596,8 @@ Future<void> deleteForever(int userId, int journalId) async {
       final keysToDelete = _journalBox!.keys.where((key) {
         final entry = _journalBox!.get(key);
         if (entry is! Map || entry['is_deleted'] != 1) return false;
-        final deletedAt = DateTime.tryParse(entry['deleted_at']?.toString() ?? '');
+        final deletedAt =
+            DateTime.tryParse(entry['deleted_at']?.toString() ?? '');
         return deletedAt != null && deletedAt.isBefore(cutoff);
       }).toList();
       for (final key in keysToDelete) {
@@ -538,5 +610,66 @@ Future<void> deleteForever(int userId, int journalId) async {
         whereArgs: [cutoff.toIso8601String()],
       );
     }
+  }
+
+  Future<void> _seedDemoJournals() async {
+    if (_journalBox == null || _journalBox!.isNotEmpty) return;
+
+    final now = DateTime.now();
+    final samples = [
+      {
+        'id': 1001,
+        'user_id': AppConfig.demoUserId,
+        'text':
+            'I finished an important milestone today. I feel proud, lighter, and excited about what comes next.',
+        'mood': 'joy',
+        'image_path': '',
+        'date': now.subtract(const Duration(hours: 2)).toIso8601String(),
+        'is_deleted': 0,
+        'deleted_at': null,
+        'sync_status': 'local-demo',
+      },
+      {
+        'id': 1002,
+        'user_id': AppConfig.demoUserId,
+        'text':
+            'The workload felt heavy, so I took a short walk and wrote down the three things I can control.',
+        'mood': 'anxiety',
+        'image_path': '',
+        'date': now.subtract(const Duration(days: 1)).toIso8601String(),
+        'is_deleted': 0,
+        'deleted_at': null,
+        'sync_status': 'local-demo',
+      },
+      {
+        'id': 1003,
+        'user_id': AppConfig.demoUserId,
+        'text':
+            'A quiet evening with family reminded me that small moments of connection matter.',
+        'mood': 'love',
+        'image_path': '',
+        'date': now.subtract(const Duration(days: 2)).toIso8601String(),
+        'is_deleted': 0,
+        'deleted_at': null,
+        'sync_status': 'local-demo',
+      },
+      {
+        'id': 1004,
+        'user_id': AppConfig.demoUserId,
+        'text':
+            'I was disappointed by the result, but I can see what I need to practice next.',
+        'mood': 'sadness',
+        'image_path': '',
+        'date': now.subtract(const Duration(days: 4)).toIso8601String(),
+        'is_deleted': 0,
+        'deleted_at': null,
+        'sync_status': 'local-demo',
+      },
+    ];
+
+    for (final sample in samples) {
+      await _journalBox!.put(sample['id'].toString(), sample);
+    }
+    await _sessionBox?.put('user_id', AppConfig.demoUserId);
   }
 }
